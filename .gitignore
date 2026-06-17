@@ -1,0 +1,32 @@
+# Go build files
+*.exe
+*.test
+*.out
+
+# Data and database
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Environment files and secrets
+.env
+.env.*
+*.key
+*.pem
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Temporary files
+tmp/
+temp/
