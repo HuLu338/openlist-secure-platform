@@ -57,3 +57,44 @@ func TestCalculateTotalScore(t *testing.T) {
 		})
 	}
 }
+
+func TestCalculateScoringBreakdown(t *testing.T) {
+	risks := []model.RiskItem{
+		{RuleID: "openlist-https-disabled", Severity: "high"},
+		{RuleID: "openlist-logging-disabled", Severity: "low"},
+	}
+
+	breakdown := CalculateScoringBreakdown(risks)
+	if breakdown.BaseScore != 100 {
+		t.Fatalf("BaseScore = %d, want 100", breakdown.BaseScore)
+	}
+	if breakdown.TotalPenalty != 25 {
+		t.Fatalf("TotalPenalty = %d, want 25", breakdown.TotalPenalty)
+	}
+	if breakdown.FinalScore != 75 {
+		t.Fatalf("FinalScore = %d, want 75", breakdown.FinalScore)
+	}
+	if len(breakdown.Penalties) != 2 {
+		t.Fatalf("len(Penalties) = %d, want 2", len(breakdown.Penalties))
+	}
+	if breakdown.Penalties[0].RuleID != "openlist-https-disabled" || breakdown.Penalties[0].Penalty != 20 {
+		t.Fatalf("first penalty = %+v, want high severity penalty for openlist-https-disabled", breakdown.Penalties[0])
+	}
+}
+
+func TestCalculateScoringBreakdownNeverBelowZero(t *testing.T) {
+	risks := []model.RiskItem{
+		{RuleID: "critical-1", Severity: "critical"},
+		{RuleID: "critical-2", Severity: "critical"},
+		{RuleID: "critical-3", Severity: "critical"},
+		{RuleID: "critical-4", Severity: "critical"},
+	}
+
+	breakdown := CalculateScoringBreakdown(risks)
+	if breakdown.FinalScore != 0 {
+		t.Fatalf("FinalScore = %d, want 0", breakdown.FinalScore)
+	}
+	if breakdown.TotalPenalty != 120 {
+		t.Fatalf("TotalPenalty = %d, want 120", breakdown.TotalPenalty)
+	}
+}

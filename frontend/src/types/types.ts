@@ -2,8 +2,23 @@ export type RiskItem = {
   rule_id: string
   title: string
   severity: string
+  evidence: string
   description: string
   recommendation: string
+}
+
+export type ScoringPenalty = {
+  rule_id: string
+  severity: string
+  penalty: number
+  reason: string
+}
+
+export type ScoringBreakdown = {
+  base_score: number
+  total_penalty: number
+  final_score: number
+  penalties: ScoringPenalty[]
 }
 
 export type Scan = {
@@ -13,6 +28,7 @@ export type Scan = {
   target_path: string
   total_score: number
   triggered_rules_count: number
+  scoring_breakdown?: ScoringBreakdown
   risks?: RiskItem[]
 }
 

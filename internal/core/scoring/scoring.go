@@ -2,27 +2,48 @@ package scoring
 
 import "openlist-secure-platform/internal/core/model"
 
+const BaseScore = 100
+
 func CalculateTotalScore(risks []model.RiskItem) int {
-	score := 100
+	return CalculateScoringBreakdown(risks).FinalScore
+}
+
+func CalculateScoringBreakdown(risks []model.RiskItem) model.ScoringBreakdown {
+	breakdown := model.ScoringBreakdown{
+		BaseScore: BaseScore,
+		Penalties: make([]model.ScoringPenalty, 0, len(risks)),
+	}
 
 	for _, risk := range risks {
-		switch risk.Severity {
-		case "critical":
-			score -= 30
-		case "high":
-			score -= 20
-		case "medium":
-			score -= 10
-		case "low":
-			score -= 5
-		default:
-			score -= 5
-		}
+		penalty := PenaltyForSeverity(risk.Severity)
+		breakdown.TotalPenalty += penalty
+		breakdown.Penalties = append(breakdown.Penalties, model.ScoringPenalty{
+			RuleID:   risk.RuleID,
+			Severity: risk.Severity,
+			Penalty:  penalty,
+			Reason:   risk.Severity + " severity finding",
+		})
 	}
 
-	if score < 0 {
-		return 0
+	breakdown.FinalScore = breakdown.BaseScore - breakdown.TotalPenalty
+	if breakdown.FinalScore < 0 {
+		breakdown.FinalScore = 0
 	}
 
-	return score
+	return breakdown
+}
+
+func PenaltyForSeverity(severity string) int {
+	switch severity {
+	case "critical":
+		return 30
+	case "high":
+		return 20
+	case "medium":
+		return 10
+	case "low":
+		return 5
+	default:
+		return 5
+	}
 }

@@ -51,11 +51,13 @@ func (s *OpenListConfigScanner) ScanConfig(configPath string) (*model.ScanReport
 			continue
 		}
 
-		if s.matchesRule(rule.RuleID, configData, policy) {
+		evidence, matched := s.ruleEvidence(rule.RuleID, configData, policy)
+		if matched {
 			risks = append(risks, model.RiskItem{
 				RuleID:         rule.RuleID,
 				Title:          rule.Title,
 				Severity:       rule.Severity,
+				Evidence:       evidence,
 				Description:    rule.Description,
 				Recommendation: rule.Recommendation,
 			})
@@ -111,29 +113,54 @@ func (s *OpenListConfigScanner) rules() []model.SecurityRule {
 }
 
 func (s *OpenListConfigScanner) matchesRule(ruleID string, config map[string]any, policy model.SecurityPolicy) bool {
+	_, matched := s.ruleEvidence(ruleID, config, policy)
+	return matched
+}
+
+func (s *OpenListConfigScanner) ruleEvidence(ruleID string, config map[string]any, policy model.SecurityPolicy) (string, bool) {
 	switch ruleID {
 	case "openlist-tls-skip-verify":
-		return isTrue(config, "scheme.skip_tls_verify")
+		value, ok := getBool(config, "scheme.skip_tls_verify")
+		if ok && value {
+			return "tls_skip_verify=true", true
+		}
 	case "openlist-jwt-secret-weak":
 		secret, ok := getString(config, "security.jwt_secret")
 		if !ok {
-			return true
+			return "jwt_secret is missing", true
 		}
-		return len(strings.TrimSpace(secret)) < 16
+		secretLength := len(strings.TrimSpace(secret))
+		if secretLength < 16 {
+			return fmt.Sprintf("jwt_secret length %d is below minimum requirement 16", secretLength), true
+		}
 	case "openlist-token-validity-too-long":
 		hours, ok := getHours(config, "security.token_expire_hours")
-		return ok && hours > float64(policy.LongTokenHoursThreshold)
+		if ok && hours > float64(policy.LongTokenHoursThreshold) {
+			return fmt.Sprintf("token_expire_hours=%s exceeds configured threshold %d", formatNumber(hours), policy.LongTokenHoursThreshold), true
+		}
 	case "openlist-https-disabled":
-		return isFalse(config, "scheme.https")
+		value, ok := getBool(config, "scheme.https")
+		if ok && !value {
+			return "https_enabled=false", true
+		}
 	case "openlist-logging-disabled":
-		return isFalse(config, "log.enable")
+		value, ok := getBool(config, "log.enable")
+		if ok && !value {
+			return "logging_enabled=false", true
+		}
 	case "openlist-ftp-enabled":
-		return isTrue(config, "services.ftp_enable")
+		value, ok := getBool(config, "services.ftp_enable")
+		if ok && value {
+			return "ftp_enabled=true", true
+		}
 	case "openlist-sftp-enabled":
-		return isTrue(config, "services.sftp_enable")
-	default:
-		return false
+		value, ok := getBool(config, "services.sftp_enable")
+		if ok && value {
+			return "sftp_enabled=true", true
+		}
 	}
+
+	return "", false
 }
 
 func (s *OpenListConfigScanner) loadPolicy() model.SecurityPolicy {
@@ -181,6 +208,15 @@ func getString(config map[string]any, paths ...string) (string, bool) {
 	return toString(value)
 }
 
+func getBool(config map[string]any, paths ...string) (bool, bool) {
+	value, ok := getValueFromPaths(config, paths...)
+	if !ok {
+		return false, false
+	}
+
+	return toBool(value)
+}
+
 func getHours(config map[string]any, paths ...string) (float64, bool) {
 	value, ok := getValueFromPaths(config, paths...)
 	if !ok {
@@ -188,6 +224,14 @@ func getHours(config map[string]any, paths ...string) (float64, bool) {
 	}
 
 	return toHours(value)
+}
+
+func formatNumber(value float64) string {
+	if value == float64(int64(value)) {
+		return strconv.FormatInt(int64(value), 10)
+	}
+
+	return strconv.FormatFloat(value, 'f', 2, 64)
 }
 
 func getValueFromPaths(config map[string]any, paths ...string) (any, bool) {

@@ -11,6 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"openlist-secure-platform/internal/core/model"
+	"openlist-secure-platform/internal/core/scoring"
 )
 
 type DB struct {
@@ -71,6 +72,7 @@ func (db *DB) init() error {
 			rule_id TEXT NOT NULL,
 			title TEXT NOT NULL,
 			severity TEXT NOT NULL,
+			evidence TEXT NOT NULL DEFAULT '',
 			description TEXT NOT NULL,
 			recommendation TEXT NOT NULL,
 			FOREIGN KEY(scan_report_id) REFERENCES scan_reports(id)
@@ -144,6 +146,10 @@ func (db *DB) init() error {
 	}
 
 	if err := db.ensurePlatformColumn(); err != nil {
+		return err
+	}
+
+	if err := db.ensureRiskEvidenceColumn(); err != nil {
 		return err
 	}
 
@@ -267,12 +273,13 @@ func (db *DB) saveScanReportOnce(report *model.ScanReport) error {
 
 	for _, risk := range report.Risks {
 		_, err = tx.Exec(
-			`INSERT INTO risk_items (scan_report_id, rule_id, title, severity, description, recommendation)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO risk_items (scan_report_id, rule_id, title, severity, evidence, description, recommendation)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			scanReportID,
 			risk.RuleID,
 			risk.Title,
 			risk.Severity,
+			risk.Evidence,
 			risk.Description,
 			risk.Recommendation,
 		)
@@ -1612,6 +1619,15 @@ func (db *DB) scanReportFromRow(row *sql.Row) (*model.ScanReport, error) {
 		return nil, err
 	}
 
+	breakdown := scoring.CalculateScoringBreakdown(risks)
+	if breakdown.FinalScore != totalScore {
+		breakdown.FinalScore = totalScore
+		breakdown.TotalPenalty = breakdown.BaseScore - totalScore
+		if breakdown.TotalPenalty < 0 {
+			breakdown.TotalPenalty = 0
+		}
+	}
+
 	return &model.ScanReport{
 		ID:                  id,
 		Platform:            platform,
@@ -1619,6 +1635,7 @@ func (db *DB) scanReportFromRow(row *sql.Row) (*model.ScanReport, error) {
 		TargetPath:          targetPath,
 		TotalScore:          totalScore,
 		TriggeredRulesCount: triggeredRulesCount,
+		ScoringBreakdown:    breakdown,
 		Risks:               risks,
 	}, nil
 }
@@ -1650,7 +1667,7 @@ func (db *DB) scanReportSummaryFromRows(rows *sql.Rows) (model.ScanReportSummary
 }
 
 func (db *DB) ensurePlatformColumn() error {
-	hasPlatformColumn, err := db.scanReportsHasColumn("platform")
+	hasPlatformColumn, err := db.tableHasColumn("scan_reports", "platform")
 	if err != nil {
 		return err
 	}
@@ -1665,6 +1682,20 @@ func (db *DB) ensurePlatformColumn() error {
 	}
 
 	_, err = db.execWrite(`UPDATE scan_reports SET platform = 'openlist' WHERE platform = '' OR platform IS NULL`)
+	return err
+}
+
+func (db *DB) ensureRiskEvidenceColumn() error {
+	hasEvidenceColumn, err := db.tableHasColumn("risk_items", "evidence")
+	if err != nil {
+		return err
+	}
+
+	if hasEvidenceColumn {
+		return nil
+	}
+
+	_, err = db.execWrite(`ALTER TABLE risk_items ADD COLUMN evidence TEXT NOT NULL DEFAULT ''`)
 	return err
 }
 
@@ -1691,8 +1722,8 @@ func (db *DB) ensureDefaultPolicy() error {
 	return err
 }
 
-func (db *DB) scanReportsHasColumn(columnName string) (bool, error) {
-	rows, err := db.sqlDB.Query(`PRAGMA table_info(scan_reports)`)
+func (db *DB) tableHasColumn(tableName string, columnName string) (bool, error) {
+	rows, err := db.sqlDB.Query(`PRAGMA table_info(` + tableName + `)`)
 	if err != nil {
 		return false, err
 	}
@@ -1726,7 +1757,7 @@ func (db *DB) scanReportsHasColumn(columnName string) (bool, error) {
 
 func (db *DB) listRiskItemsByScanReportID(scanReportID int64) ([]model.RiskItem, error) {
 	rows, err := db.sqlDB.Query(
-		`SELECT rule_id, title, severity, description, recommendation
+		`SELECT rule_id, title, severity, evidence, description, recommendation
 		 FROM risk_items
 		 WHERE scan_report_id = ?
 		 ORDER BY id ASC`,
@@ -1744,6 +1775,7 @@ func (db *DB) listRiskItemsByScanReportID(scanReportID int64) ([]model.RiskItem,
 			&risk.RuleID,
 			&risk.Title,
 			&risk.Severity,
+			&risk.Evidence,
 			&risk.Description,
 			&risk.Recommendation,
 		); err != nil {

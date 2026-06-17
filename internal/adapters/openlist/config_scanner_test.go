@@ -88,6 +88,13 @@ func TestOpenListConfigScannerRiskyConfig(t *testing.T) {
 			t.Fatalf("expected risk %q was not triggered", ruleID)
 		}
 	}
+
+	if !hasRiskEvidence(report.Risks, "openlist-https-disabled", "https_enabled=false") {
+		t.Fatalf("expected HTTPS disabled evidence was not found")
+	}
+	if !hasRiskEvidence(report.Risks, "openlist-ftp-enabled", "ftp_enabled=true") {
+		t.Fatalf("expected FTP enabled evidence was not found")
+	}
 }
 
 func TestOpenListConfigScannerDisabledRuleDoesNotTrigger(t *testing.T) {
@@ -285,6 +292,16 @@ func writeTempConfig(t *testing.T, content string) string {
 func hasRisk(risks []model.RiskItem, ruleID string) bool {
 	for _, risk := range risks {
 		if risk.RuleID == ruleID {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasRiskEvidence(risks []model.RiskItem, ruleID string, evidence string) bool {
+	for _, risk := range risks {
+		if risk.RuleID == ruleID && risk.Evidence == evidence {
 			return true
 		}
 	}
