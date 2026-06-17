@@ -1,0 +1,17 @@
+{
+  "scheme": {
+    "https": true,
+    "skip_tls_verify": false
+  },
+  "security": {
+    "jwt_secret": "safe-openlist-secret-value",
+    "token_expire_hours": 24
+  },
+  "log": {
+    "enable": true
+  },
+  "services": {
+    "ftp_enable": true,
+    "sftp_enable": true
+  }
+}

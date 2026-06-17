@@ -1,0 +1,6 @@
+2026-04-24T04:00:00+08:00 login success user=admin ip=127.0.0.1
+2026-04-24T04:01:00+08:00 login failed user=guest ip=192.168.1.30
+2026-04-24T04:02:00+08:00 file accessed path=/docs/report.pdf user=alice ip=10.0.0.2
+2026-04-24T04:03:00+08:00 file deleted path=/docs/old.txt user=admin ip=127.0.0.1
+2026-04-24T04:04:00+08:00 admin changed setting user=admin target=sharing_policy ip=127.0.0.1
+2026-04-24T04:05:00+08:00 background task completed user=system ip=127.0.0.1

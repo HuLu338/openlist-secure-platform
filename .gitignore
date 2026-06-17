@@ -21,6 +21,13 @@ frontend/dist/
 
 # Logs
 *.log
+!evaluation/logs/
+!evaluation/logs/*.log
+
+# Generated evaluation outputs
+evaluation/results/*.csv
+evaluation/results/*.json
+!evaluation/results/.gitkeep
 
 # OS / editor
 .DS_Store
