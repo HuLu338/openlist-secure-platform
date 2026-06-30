@@ -6,6 +6,7 @@ type RiskItem struct {
 	RuleID         string `json:"rule_id"`
 	Title          string `json:"title"`
 	Severity       string `json:"severity"`
+	Category       string `json:"category"`
 	Evidence       string `json:"evidence"`
 	Description    string `json:"description"`
 	Recommendation string `json:"recommendation"`
@@ -16,6 +17,7 @@ type ScanRule struct {
 	Title          string
 	Severity       string
 	Description    string
+	Category       string
 	Recommendation string
 }
 
@@ -26,6 +28,7 @@ type ScanReport struct {
 	TargetPath          string           `json:"target_path"`
 	TotalScore          int              `json:"total_score"`
 	TriggeredRulesCount int              `json:"triggered_rules_count"`
+	RiskLevel           string           `json:"risk_level"`
 	ScoringBreakdown    ScoringBreakdown `json:"scoring_breakdown"`
 	Risks               []RiskItem       `json:"risks"`
 }
@@ -37,6 +40,7 @@ type ScanReportSummary struct {
 	TargetPath          string    `json:"target_path"`
 	TotalScore          int       `json:"total_score"`
 	TriggeredRulesCount int       `json:"triggered_rules_count"`
+	RiskLevel           string    `json:"risk_level"`
 }
 
 type ScoringBreakdown struct {

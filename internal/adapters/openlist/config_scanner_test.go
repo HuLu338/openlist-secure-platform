@@ -95,6 +95,17 @@ func TestOpenListConfigScannerRiskyConfig(t *testing.T) {
 	if !hasRiskEvidence(report.Risks, "openlist-ftp-enabled", "ftp_enabled=true") {
 		t.Fatalf("expected FTP enabled evidence was not found")
 	}
+	if !hasRiskCategory(report.Risks, "openlist-https-disabled", "transport_security") {
+		t.Fatalf("expected HTTPS disabled category was not found")
+	}
+	if !hasRiskCategory(report.Risks, "openlist-jwt-secret-weak", "authentication") {
+		t.Fatalf("expected JWT weak secret category was not found")
+	}
+
+	score := scoring.CalculateTotalScore(report.Risks)
+	if got := scoring.RiskLevelForScore(score); got != "critical" {
+		t.Fatalf("risk level = %q, want critical", got)
+	}
 }
 
 func TestOpenListConfigScannerDisabledRuleDoesNotTrigger(t *testing.T) {
@@ -224,6 +235,11 @@ func TestOpenListConfigScannerSafeConfig(t *testing.T) {
 	if len(report.Risks) != 0 {
 		t.Fatalf("len(report.Risks) = %d, want 0", len(report.Risks))
 	}
+
+	score := scoring.CalculateTotalScore(report.Risks)
+	if got := scoring.RiskLevelForScore(score); got != "low" {
+		t.Fatalf("risk level = %q, want low", got)
+	}
 }
 
 func TestOpenListConfigScannerTokenThresholdPolicy(t *testing.T) {
@@ -302,6 +318,16 @@ func hasRisk(risks []model.RiskItem, ruleID string) bool {
 func hasRiskEvidence(risks []model.RiskItem, ruleID string, evidence string) bool {
 	for _, risk := range risks {
 		if risk.RuleID == ruleID && risk.Evidence == evidence {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasRiskCategory(risks []model.RiskItem, ruleID string, category string) bool {
+	for _, risk := range risks {
+		if risk.RuleID == ruleID && risk.Category == category {
 			return true
 		}
 	}

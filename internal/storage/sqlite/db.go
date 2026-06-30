@@ -64,6 +64,7 @@ func (db *DB) init() error {
 			scan_time TEXT NOT NULL,
 			target_path TEXT NOT NULL,
 			total_score INTEGER NOT NULL,
+			risk_level TEXT NOT NULL DEFAULT '',
 			triggered_rules_count INTEGER NOT NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS risk_items (
@@ -72,6 +73,7 @@ func (db *DB) init() error {
 			rule_id TEXT NOT NULL,
 			title TEXT NOT NULL,
 			severity TEXT NOT NULL,
+			category TEXT NOT NULL DEFAULT '',
 			evidence TEXT NOT NULL DEFAULT '',
 			description TEXT NOT NULL,
 			recommendation TEXT NOT NULL,
@@ -132,6 +134,7 @@ func (db *DB) init() error {
 			platform TEXT NOT NULL,
 			title TEXT NOT NULL,
 			severity TEXT NOT NULL,
+			category TEXT NOT NULL DEFAULT '',
 			enabled INTEGER NOT NULL,
 			description TEXT NOT NULL,
 			recommendation TEXT NOT NULL,
@@ -150,6 +153,17 @@ func (db *DB) init() error {
 	}
 
 	if err := db.ensureRiskEvidenceColumn(); err != nil {
+		return err
+	}
+	if err := db.ensureRiskCategoryColumn(); err != nil {
+		return err
+	}
+
+	if err := db.ensureScanRiskLevelColumn(); err != nil {
+		return err
+	}
+
+	if err := db.ensureSecurityRuleCategoryColumn(); err != nil {
 		return err
 	}
 
@@ -250,14 +264,18 @@ func (db *DB) saveScanReportOnce(report *model.ScanReport) error {
 	if report.Platform == "" {
 		report.Platform = "openlist"
 	}
+	if report.RiskLevel == "" {
+		report.RiskLevel = scoring.RiskLevelForScore(report.TotalScore)
+	}
 
 	result, err := tx.Exec(
-		`INSERT INTO scan_reports (platform, scan_time, target_path, total_score, triggered_rules_count)
-		 VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO scan_reports (platform, scan_time, target_path, total_score, risk_level, triggered_rules_count)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
 		report.Platform,
 		report.ScanTime.Format(time.RFC3339),
 		report.TargetPath,
 		report.TotalScore,
+		report.RiskLevel,
 		report.TriggeredRulesCount,
 	)
 	if err != nil {
@@ -273,12 +291,13 @@ func (db *DB) saveScanReportOnce(report *model.ScanReport) error {
 
 	for _, risk := range report.Risks {
 		_, err = tx.Exec(
-			`INSERT INTO risk_items (scan_report_id, rule_id, title, severity, evidence, description, recommendation)
-			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO risk_items (scan_report_id, rule_id, title, severity, category, evidence, description, recommendation)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			scanReportID,
 			risk.RuleID,
 			risk.Title,
 			risk.Severity,
+			risk.Category,
 			risk.Evidence,
 			risk.Description,
 			risk.Recommendation,
@@ -537,7 +556,7 @@ func (db *DB) InitializeDefaultSecurityRules(rules []model.SecurityRule) error {
 	}
 
 	if count > 0 {
-		return nil
+		return db.syncSecurityRuleCategories(rules)
 	}
 
 	return db.withWriteRetry(func() error {
@@ -569,12 +588,13 @@ func (db *DB) initializeDefaultSecurityRulesOnce(rules []model.SecurityRule) err
 		}
 
 		_, execErr := tx.Exec(
-			`INSERT INTO security_rules (rule_id, platform, title, severity, enabled, description, recommendation, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO security_rules (rule_id, platform, title, severity, category, enabled, description, recommendation, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			rule.RuleID,
 			rule.Platform,
 			rule.Title,
 			rule.Severity,
+			rule.Category,
 			enabledValue,
 			rule.Description,
 			rule.Recommendation,
@@ -595,9 +615,30 @@ func (db *DB) initializeDefaultSecurityRulesOnce(rules []model.SecurityRule) err
 	return nil
 }
 
+func (db *DB) syncSecurityRuleCategories(rules []model.SecurityRule) error {
+	for _, rule := range rules {
+		if rule.Category == "" {
+			continue
+		}
+
+		_, err := db.execWrite(
+			`UPDATE security_rules
+			 SET category = ?
+			 WHERE rule_id = ? AND (category = '' OR category IS NULL)`,
+			rule.Category,
+			rule.RuleID,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (db *DB) GetLatestScanReport() (*model.ScanReport, error) {
 	row := db.sqlDB.QueryRow(
-		`SELECT id, platform, scan_time, target_path, total_score, triggered_rules_count
+		`SELECT id, platform, scan_time, target_path, total_score, risk_level, triggered_rules_count
 		 FROM scan_reports
 		 ORDER BY id DESC
 		 LIMIT 1`,
@@ -619,7 +660,7 @@ func (db *DB) ListScanReports() ([]model.ScanReportSummary, error) {
 }
 
 func (db *DB) ListScanReportsFiltered(minScore, maxScore *int, targetPath string) ([]model.ScanReportSummary, error) {
-	query := `SELECT id, platform, scan_time, target_path, total_score, triggered_rules_count
+	query := `SELECT id, platform, scan_time, target_path, total_score, risk_level, triggered_rules_count
 		 FROM scan_reports`
 	conditions := make([]string, 0)
 	args := make([]any, 0)
@@ -673,7 +714,7 @@ func (db *DB) ListScanReportsFiltered(minScore, maxScore *int, targetPath string
 
 func (db *DB) GetScanReportByID(id int64) (*model.ScanReport, error) {
 	row := db.sqlDB.QueryRow(
-		`SELECT id, platform, scan_time, target_path, total_score, triggered_rules_count
+		`SELECT id, platform, scan_time, target_path, total_score, risk_level, triggered_rules_count
 		 FROM scan_reports
 		 WHERE id = ?`,
 		id,
@@ -902,7 +943,7 @@ func (db *DB) ListAlerts() ([]model.Alert, error) {
 
 func (db *DB) ListSecurityRules() ([]model.SecurityRule, error) {
 	rows, err := db.sqlDB.Query(
-		`SELECT id, rule_id, platform, title, severity, enabled, description, recommendation, updated_at
+		`SELECT id, rule_id, platform, title, severity, category, enabled, description, recommendation, updated_at
 		 FROM security_rules
 		 ORDER BY id ASC`,
 	)
@@ -930,7 +971,7 @@ func (db *DB) ListSecurityRules() ([]model.SecurityRule, error) {
 
 func (db *DB) GetSecurityRule(ruleID string) (*model.SecurityRule, error) {
 	row := db.sqlDB.QueryRow(
-		`SELECT id, rule_id, platform, title, severity, enabled, description, recommendation, updated_at
+		`SELECT id, rule_id, platform, title, severity, category, enabled, description, recommendation, updated_at
 		 FROM security_rules
 		 WHERE rule_id = ?`,
 		ruleID,
@@ -1602,10 +1643,11 @@ func (db *DB) scanReportFromRow(row *sql.Row) (*model.ScanReport, error) {
 		scanTimeText        string
 		targetPath          string
 		totalScore          int
+		riskLevel           string
 		triggeredRulesCount int
 	)
 
-	if err := row.Scan(&id, &platform, &scanTimeText, &targetPath, &totalScore, &triggeredRulesCount); err != nil {
+	if err := row.Scan(&id, &platform, &scanTimeText, &targetPath, &totalScore, &riskLevel, &triggeredRulesCount); err != nil {
 		return nil, err
 	}
 
@@ -1627,6 +1669,9 @@ func (db *DB) scanReportFromRow(row *sql.Row) (*model.ScanReport, error) {
 			breakdown.TotalPenalty = 0
 		}
 	}
+	if riskLevel == "" {
+		riskLevel = scoring.RiskLevelForScore(totalScore)
+	}
 
 	return &model.ScanReport{
 		ID:                  id,
@@ -1635,6 +1680,7 @@ func (db *DB) scanReportFromRow(row *sql.Row) (*model.ScanReport, error) {
 		TargetPath:          targetPath,
 		TotalScore:          totalScore,
 		TriggeredRulesCount: triggeredRulesCount,
+		RiskLevel:           riskLevel,
 		ScoringBreakdown:    breakdown,
 		Risks:               risks,
 	}, nil
@@ -1652,6 +1698,7 @@ func (db *DB) scanReportSummaryFromRows(rows *sql.Rows) (model.ScanReportSummary
 		&scanTimeText,
 		&summary.TargetPath,
 		&summary.TotalScore,
+		&summary.RiskLevel,
 		&summary.TriggeredRulesCount,
 	); err != nil {
 		return model.ScanReportSummary{}, err
@@ -1663,6 +1710,9 @@ func (db *DB) scanReportSummaryFromRows(rows *sql.Rows) (model.ScanReportSummary
 	}
 
 	summary.ScanTime = scanTime
+	if summary.RiskLevel == "" {
+		summary.RiskLevel = scoring.RiskLevelForScore(summary.TotalScore)
+	}
 	return summary, nil
 }
 
@@ -1696,6 +1746,42 @@ func (db *DB) ensureRiskEvidenceColumn() error {
 	}
 
 	_, err = db.execWrite(`ALTER TABLE risk_items ADD COLUMN evidence TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
+func (db *DB) ensureRiskCategoryColumn() error {
+	hasCategoryColumn, err := db.tableHasColumn("risk_items", "category")
+	if err != nil {
+		return err
+	}
+	if hasCategoryColumn {
+		return nil
+	}
+	_, err = db.execWrite(`ALTER TABLE risk_items ADD COLUMN category TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
+func (db *DB) ensureScanRiskLevelColumn() error {
+	hasRiskLevelColumn, err := db.tableHasColumn("scan_reports", "risk_level")
+	if err != nil {
+		return err
+	}
+	if hasRiskLevelColumn {
+		return nil
+	}
+	_, err = db.execWrite(`ALTER TABLE scan_reports ADD COLUMN risk_level TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
+func (db *DB) ensureSecurityRuleCategoryColumn() error {
+	hasCategoryColumn, err := db.tableHasColumn("security_rules", "category")
+	if err != nil {
+		return err
+	}
+	if hasCategoryColumn {
+		return nil
+	}
+	_, err = db.execWrite(`ALTER TABLE security_rules ADD COLUMN category TEXT NOT NULL DEFAULT ''`)
 	return err
 }
 
@@ -1757,7 +1843,7 @@ func (db *DB) tableHasColumn(tableName string, columnName string) (bool, error) 
 
 func (db *DB) listRiskItemsByScanReportID(scanReportID int64) ([]model.RiskItem, error) {
 	rows, err := db.sqlDB.Query(
-		`SELECT rule_id, title, severity, evidence, description, recommendation
+		`SELECT rule_id, title, severity, category, evidence, description, recommendation
 		 FROM risk_items
 		 WHERE scan_report_id = ?
 		 ORDER BY id ASC`,
@@ -1775,6 +1861,7 @@ func (db *DB) listRiskItemsByScanReportID(scanReportID int64) ([]model.RiskItem,
 			&risk.RuleID,
 			&risk.Title,
 			&risk.Severity,
+			&risk.Category,
 			&risk.Evidence,
 			&risk.Description,
 			&risk.Recommendation,
@@ -1961,6 +2048,7 @@ func scanSecurityRule(rowScanner interface {
 		&rule.Platform,
 		&rule.Title,
 		&rule.Severity,
+		&rule.Category,
 		&enabledValue,
 		&rule.Description,
 		&rule.Recommendation,

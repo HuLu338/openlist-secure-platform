@@ -47,3 +47,16 @@ func PenaltyForSeverity(severity string) int {
 		return 5
 	}
 }
+
+func RiskLevelForScore(score int) string {
+	switch {
+	case score >= 80:
+		return "low"
+	case score >= 60:
+		return "medium"
+	case score >= 40:
+		return "high"
+	default:
+		return "critical"
+	}
+}

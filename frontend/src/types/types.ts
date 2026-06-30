@@ -2,6 +2,7 @@ export type RiskItem = {
   rule_id: string
   title: string
   severity: string
+  category: string
   evidence: string
   description: string
   recommendation: string
@@ -27,6 +28,7 @@ export type Scan = {
   scan_time: string
   target_path: string
   total_score: number
+  risk_level: string
   triggered_rules_count: number
   scoring_breakdown?: ScoringBreakdown
   risks?: RiskItem[]
@@ -132,6 +134,7 @@ export type RiskTrendItem = {
   platform?: string
   scan_time: string
   total_score: number
+  risk_level: string
   triggered_rules_count: number
   target_path: string
 }

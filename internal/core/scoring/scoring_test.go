@@ -98,3 +98,25 @@ func TestCalculateScoringBreakdownNeverBelowZero(t *testing.T) {
 		t.Fatalf("TotalPenalty = %d, want 120", breakdown.TotalPenalty)
 	}
 }
+
+func TestRiskLevelForScore(t *testing.T) {
+	tests := []struct {
+		score int
+		want  string
+	}{
+		{score: 100, want: "low"},
+		{score: 80, want: "low"},
+		{score: 79, want: "medium"},
+		{score: 60, want: "medium"},
+		{score: 59, want: "high"},
+		{score: 40, want: "high"},
+		{score: 39, want: "critical"},
+	}
+
+	for _, test := range tests {
+		got := RiskLevelForScore(test.score)
+		if got != test.want {
+			t.Fatalf("RiskLevelForScore(%d) = %q, want %q", test.score, got, test.want)
+		}
+	}
+}

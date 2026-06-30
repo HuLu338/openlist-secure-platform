@@ -8,6 +8,7 @@ type SecurityRule struct {
 	Platform       string    `json:"platform"`
 	Title          string    `json:"title"`
 	Severity       string    `json:"severity"`
+	Category       string    `json:"category"`
 	Enabled        bool      `json:"enabled"`
 	Description    string    `json:"description"`
 	Recommendation string    `json:"recommendation"`

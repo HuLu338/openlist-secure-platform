@@ -61,6 +61,7 @@ func (s *ScanService) RunConfigScan(configPath string) (*model.ScanReport, error
 	report.TriggeredRulesCount = len(report.Risks)
 	report.ScoringBreakdown = scoring.CalculateScoringBreakdown(report.Risks)
 	report.TotalScore = report.ScoringBreakdown.FinalScore
+	report.RiskLevel = scoring.RiskLevelForScore(report.TotalScore)
 
 	if s.Store == nil {
 		return nil, errors.New("scan report store is not configured")
