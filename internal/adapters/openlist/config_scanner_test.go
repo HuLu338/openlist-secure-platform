@@ -294,6 +294,52 @@ func TestOpenListConfigScannerTokenThresholdPolicy(t *testing.T) {
 	}
 }
 
+func TestOpenListConfigScannerWebDAVRiskyAccess(t *testing.T) {
+	configPath := writeTempConfig(t, `{
+		"scheme": {
+			"https": true,
+			"skip_tls_verify": false
+		},
+		"security": {
+			"jwt_secret": "this-is-a-long-secret",
+			"token_expire_hours": 24
+		},
+		"log": {
+			"enable": true
+		},
+		"services": {
+			"ftp_enable": false,
+			"sftp_enable": false
+		},
+		"webdav": {
+			"webdav_enabled": true,
+			"webdav_write": true,
+			"meta_password": ""
+		}
+	}`)
+
+	scanner := NewOpenListConfigScanner(
+		NewOpenListConfigReader(),
+		NewOpenListRuleProvider(),
+		testPolicyReader{policy: model.DefaultSecurityPolicy()},
+	)
+
+	report, err := scanner.ScanConfig(configPath)
+	if err != nil {
+		t.Fatalf("ScanConfig() returned error: %v", err)
+	}
+
+	if !hasRisk(report.Risks, "openlist-webdav-risky-access") {
+		t.Fatalf("expected WebDAV risky access rule to trigger")
+	}
+	if !hasRiskEvidence(report.Risks, "openlist-webdav-risky-access", "webdav_write=true") {
+		t.Fatalf("expected WebDAV evidence was not found")
+	}
+	if !hasRiskCategory(report.Risks, "openlist-webdav-risky-access", "protocol_exposure") {
+		t.Fatalf("expected WebDAV category was not found")
+	}
+}
+
 func writeTempConfig(t *testing.T, content string) string {
 	t.Helper()
 

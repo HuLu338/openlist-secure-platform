@@ -1,0 +1,24 @@
+{
+  "scheme": {
+    "https": true,
+    "skip_tls_verify": false
+  },
+  "security": {
+    "jwt_secret": "safe-openlist-secret-value",
+    "token_expire_hours": 24
+  },
+  "log": {
+    "enable": true
+  },
+  "services": {
+    "ftp_enable": false,
+    "sftp_enable": false
+  },
+  "webdav": {
+    "webdav_enabled": true,
+    "webdav_write": true,
+    "webdav_manage": true,
+    "webdav_apply_to_sub_folder": true,
+    "meta_password": ""
+  }
+}

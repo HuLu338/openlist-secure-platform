@@ -556,7 +556,7 @@ func (db *DB) InitializeDefaultSecurityRules(rules []model.SecurityRule) error {
 	}
 
 	if count > 0 {
-		return db.syncSecurityRuleCategories(rules)
+		return db.syncDefaultSecurityRules(rules)
 	}
 
 	return db.withWriteRetry(func() error {
@@ -615,8 +615,43 @@ func (db *DB) initializeDefaultSecurityRulesOnce(rules []model.SecurityRule) err
 	return nil
 }
 
-func (db *DB) syncSecurityRuleCategories(rules []model.SecurityRule) error {
+func (db *DB) syncDefaultSecurityRules(rules []model.SecurityRule) error {
+	now := time.Now()
 	for _, rule := range rules {
+		var count int
+		if err := db.sqlDB.QueryRow(`SELECT COUNT(*) FROM security_rules WHERE rule_id = ?`, rule.RuleID).Scan(&count); err != nil {
+			return err
+		}
+
+		if rule.UpdatedAt.IsZero() {
+			rule.UpdatedAt = now
+		}
+
+		if count == 0 {
+			enabledValue := 0
+			if rule.Enabled {
+				enabledValue = 1
+			}
+
+			_, err := db.execWrite(
+				`INSERT INTO security_rules (rule_id, platform, title, severity, category, enabled, description, recommendation, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				rule.RuleID,
+				rule.Platform,
+				rule.Title,
+				rule.Severity,
+				rule.Category,
+				enabledValue,
+				rule.Description,
+				rule.Recommendation,
+				rule.UpdatedAt.Format(time.RFC3339),
+			)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
 		if rule.Category == "" {
 			continue
 		}
@@ -633,6 +668,7 @@ func (db *DB) syncSecurityRuleCategories(rules []model.SecurityRule) error {
 		}
 	}
 
+	// TODO: add explicit rule versioning before supporting complex user-defined rules.
 	return nil
 }
 

@@ -27,12 +27,29 @@ RESULTS_DIR = ROOT_DIR / "results"
 MATRIX_PATH = RESULTS_DIR / "evaluation_matrix.csv"
 SUMMARY_PATH = RESULTS_DIR / "evaluation_summary.json"
 
+EVALUATION_POLICY = {
+    "low_score_threshold": 70,
+    "multiple_login_failures_threshold": 5,
+    "long_token_hours_threshold": 168,
+}
+
+EVALUATION_RULES = {
+    "openlist-tls-skip-verify": {"enabled": True, "severity": "high"},
+    "openlist-jwt-secret-weak": {"enabled": True, "severity": "critical"},
+    "openlist-token-validity-too-long": {"enabled": True, "severity": "medium"},
+    "openlist-https-disabled": {"enabled": True, "severity": "high"},
+    "openlist-logging-disabled": {"enabled": True, "severity": "low"},
+    "openlist-ftp-enabled": {"enabled": True, "severity": "medium"},
+    "openlist-sftp-enabled": {"enabled": True, "severity": "low"},
+    "openlist-webdav-risky-access": {"enabled": True, "severity": "medium"},
+}
 
 CONFIG_SCENARIOS = [
     {
         "scenario_id": "config_safe",
         "input_file": CONFIG_DIR / "config_safe.json",
         "expected_findings": [],
+        "expected_alerts": 0,
     },
     {
         "scenario_id": "config_critical_weak_secret",
@@ -41,13 +58,16 @@ CONFIG_SCENARIOS = [
             "openlist-jwt-secret-weak",
             "openlist-token-validity-too-long",
         ],
+        "expected_alerts": 3,
     },
     {
         "scenario_id": "config_transport_insecure",
         "input_file": CONFIG_DIR / "config_transport_insecure.json",
         "expected_findings": [
             "openlist-https-disabled",
+            "openlist-tls-skip-verify",
         ],
+        "expected_alerts": 1,
     },
     {
         "scenario_id": "config_logging_disabled",
@@ -55,6 +75,7 @@ CONFIG_SCENARIOS = [
         "expected_findings": [
             "openlist-logging-disabled",
         ],
+        "expected_alerts": 0,
     },
     {
         "scenario_id": "config_protocol_exposure",
@@ -63,6 +84,15 @@ CONFIG_SCENARIOS = [
             "openlist-ftp-enabled",
             "openlist-sftp-enabled",
         ],
+        "expected_alerts": 0,
+    },
+    {
+        "scenario_id": "config_webdav_risky",
+        "input_file": CONFIG_DIR / "config_webdav_risky.json",
+        "expected_findings": [
+            "openlist-webdav-risky-access",
+        ],
+        "expected_alerts": 1,
     },
 ]
 
@@ -84,13 +114,25 @@ LOG_SCENARIOS = [
         "scenario_id": "log_admin_sensitive_actions",
         "input_file": LOG_DIR / "log_admin_sensitive_actions.log",
         "expected_events": 3,
-        "expected_alerts": 3,
+        "expected_alerts": 6,
     },
     {
         "scenario_id": "log_mixed_security_events",
         "input_file": LOG_DIR / "log_mixed_security_events.log",
         "expected_events": 6,
-        "expected_alerts": 1,
+        "expected_alerts": 2,
+    },
+    {
+        "scenario_id": "log_webdav_activity",
+        "input_file": LOG_DIR / "log_webdav_activity.log",
+        "expected_events": 4,
+        "expected_alerts": 5,
+    },
+    {
+        "scenario_id": "log_token_activity",
+        "input_file": LOG_DIR / "log_token_activity.log",
+        "expected_events": 4,
+        "expected_alerts": 0,
     },
 ]
 
@@ -144,9 +186,66 @@ def safe_reset() -> None:
             print(f"  reset skipped: {path} returned HTTP {status}")
 
 
+def configure_evaluation_policy() -> dict[str, Any] | None:
+    status, policy = api_request("GET", "/policies")
+    if status < 200 or status >= 300 or not isinstance(policy, dict):
+        print(f"Warning: could not load policy for deterministic setup (HTTP {status}).")
+        return None
+
+    original_policy = dict(policy)
+    next_policy = dict(policy)
+    next_policy.update(EVALUATION_POLICY)
+    patch_policy(next_policy)
+    return original_policy
+
+
+def patch_policy(policy: dict[str, Any]) -> None:
+    payload = {
+        "low_score_threshold": int(policy["low_score_threshold"]),
+        "multiple_login_failures_threshold": int(policy["multiple_login_failures_threshold"]),
+        "long_token_hours_threshold": int(policy["long_token_hours_threshold"]),
+    }
+    status, response = api_request("PATCH", "/policies", payload)
+    if status < 200 or status >= 300:
+        raise RuntimeError(f"failed to patch policy for evaluation: HTTP {status}: {response}")
+
+
+def configure_evaluation_rules() -> dict[str, dict[str, Any]]:
+    status, rules = api_request("GET", "/rules")
+    if status < 200 or status >= 300 or not isinstance(rules, list):
+        print(f"Warning: could not load rules for deterministic setup (HTTP {status}).")
+        return {}
+
+    original_rules: dict[str, dict[str, Any]] = {}
+    current_by_id = {rule.get("rule_id"): rule for rule in rules if isinstance(rule, dict)}
+
+    for rule_id, desired in EVALUATION_RULES.items():
+        current = current_by_id.get(rule_id)
+        if current is not None:
+            original_rules[rule_id] = {
+                "enabled": bool(current.get("enabled")),
+                "severity": str(current.get("severity", "")),
+            }
+
+        status, response = api_request("PATCH", f"/rules/{rule_id}", desired)
+        if status < 200 or status >= 300:
+            print(f"Warning: could not configure rule {rule_id} (HTTP {status}: {response}).")
+
+    return original_rules
+
+
+def restore_rules(original_rules: dict[str, dict[str, Any]]) -> None:
+    for rule_id, rule in original_rules.items():
+        status, response = api_request("PATCH", f"/rules/{rule_id}", rule)
+        if status < 200 or status >= 300:
+            print(f"Warning: could not restore rule {rule_id} (HTTP {status}: {response}).")
+
+
 def run_config_scenario(scenario: dict[str, Any]) -> dict[str, Any]:
     input_file = scenario["input_file"]
+    alerts_before = get_alert_count()
     status, response = api_request("POST", "/scan/start", {"config_path": str(input_file)})
+    alerts_after = get_alert_count()
 
     if status < 200 or status >= 300:
         return failed_row(
@@ -161,8 +260,17 @@ def run_config_scenario(scenario: dict[str, Any]) -> dict[str, Any]:
     scoring_breakdown = response.get("scoring_breakdown", {})
     score = response.get("total_score", "")
     total_penalty = scoring_breakdown.get("total_penalty", "")
-    passed = detected_findings == expected_findings
-    notes = "ok" if passed else "detected findings did not match expected findings"
+    detected_alerts = max(alerts_after - alerts_before, 0)
+    expected_alerts = scenario.get("expected_alerts", "")
+    findings_passed = detected_findings == expected_findings
+    alerts_passed = expected_alerts == "" or detected_alerts == expected_alerts
+    passed = findings_passed and alerts_passed
+
+    notes = "ok"
+    if not findings_passed:
+        notes = "detected findings did not match expected findings"
+    elif not alerts_passed:
+        notes = "detected alert count did not match expected count"
 
     return {
         "scenario_id": scenario["scenario_id"],
@@ -172,8 +280,8 @@ def run_config_scenario(scenario: dict[str, Any]) -> dict[str, Any]:
         "detected_findings": join_values(detected_findings),
         "expected_events": "",
         "detected_events": "",
-        "expected_alerts": "",
-        "detected_alerts": "",
+        "expected_alerts": expected_alerts,
+        "detected_alerts": detected_alerts,
         "score": score,
         "total_penalty": total_penalty,
         "passed": passed,
@@ -361,23 +469,35 @@ def main() -> int:
     parser.add_argument("--reset", action="store_true", help="Reset development data before evaluation.")
     args = parser.parse_args()
 
-    if args.reset:
-        safe_reset()
+    original_policy: dict[str, Any] | None = None
+    original_rules: dict[str, dict[str, Any]] = {}
 
-    rows: list[dict[str, Any]] = []
+    try:
+        original_policy = configure_evaluation_policy()
+        original_rules = configure_evaluation_rules()
 
-    for scenario in CONFIG_SCENARIOS:
-        rows.append(run_config_scenario(scenario))
+        if args.reset:
+            safe_reset()
 
-    for scenario in LOG_SCENARIOS:
-        rows.append(run_log_scenario(scenario))
+        rows: list[dict[str, Any]] = []
 
-    optional_context = query_optional_context()
-    write_matrix(rows)
-    write_summary(rows, optional_context)
-    print_results(rows)
+        for scenario in CONFIG_SCENARIOS:
+            rows.append(run_config_scenario(scenario))
 
-    return 0 if all(row["passed"] for row in rows) else 1
+        for scenario in LOG_SCENARIOS:
+            rows.append(run_log_scenario(scenario))
+
+        optional_context = query_optional_context()
+        write_matrix(rows)
+        write_summary(rows, optional_context)
+        print_results(rows)
+
+        return 0 if all(row["passed"] for row in rows) else 1
+    finally:
+        if original_rules:
+            restore_rules(original_rules)
+        if original_policy is not None:
+            patch_policy(original_policy)
 
 
 if __name__ == "__main__":

@@ -109,5 +109,16 @@ func DefaultSecurityRules() []model.SecurityRule {
 			Recommendation: "Disable SFTP if it is not needed, or keep it hardened and monitored.",
 			UpdatedAt:      now,
 		},
+		{
+			RuleID:         "openlist-webdav-risky-access",
+			Platform:       "openlist",
+			Title:          "Risky WebDAV Access Configuration",
+			Severity:       "medium",
+			Category:       "protocol_exposure",
+			Enabled:        true,
+			Description:    "Representative WebDAV settings indicate writable or management access that should be reviewed.",
+			Recommendation: "Review WebDAV permissions and disable risky WebDAV access if it is not required.",
+			UpdatedAt:      now,
+		},
 	}
 }

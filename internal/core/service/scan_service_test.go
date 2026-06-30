@@ -95,3 +95,36 @@ func TestScanServiceBuildAlerts(t *testing.T) {
 		t.Fatalf("alerts[1].Message = %q", alerts[1].Message)
 	}
 }
+
+func TestScanServiceBuildAlertsForTokenAndWebDAV(t *testing.T) {
+	policy := model.DefaultSecurityPolicy()
+	policy.LowScoreThreshold = 50
+	service := NewScanService(nil, nil, nil, nil, testPolicyReader{policy: policy})
+
+	report := &model.ScanReport{
+		ID:         9,
+		TotalScore: 80,
+		Risks: []model.RiskItem{
+			{RuleID: "openlist-token-validity-too-long", Severity: "medium"},
+			{RuleID: "openlist-webdav-risky-access", Severity: "medium"},
+		},
+	}
+
+	alerts := service.buildAlerts(report)
+	wantTypes := map[string]bool{
+		"long_token_validity":   false,
+		"risky_webdav_activity": false,
+	}
+
+	for _, alert := range alerts {
+		if _, ok := wantTypes[alert.AlertType]; ok {
+			wantTypes[alert.AlertType] = true
+		}
+	}
+
+	for alertType, seen := range wantTypes {
+		if !seen {
+			t.Fatalf("expected alert type %q was not generated", alertType)
+		}
+	}
+}

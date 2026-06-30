@@ -98,20 +98,33 @@ func (s *ScanService) buildAlerts(report *model.ScanReport) []model.Alert {
 	alerts := make([]model.Alert, 0)
 	sourceRef := strconv.FormatInt(report.ID, 10)
 	lowScoreThreshold := s.lowScoreThreshold()
+	hasCriticalRisk := false
+	hasLongTokenValidity := false
+	hasRiskyWebDAV := false
 
 	for _, risk := range report.Risks {
 		if risk.Severity == "critical" {
-			alerts = append(alerts, model.Alert{
-				SourceType: "scan",
-				SourceRef:  sourceRef,
-				AlertType:  "critical_risk_detected",
-				Severity:   "high",
-				Message:    "A scan detected at least one critical security risk.",
-				Status:     "open",
-				CreatedAt:  time.Now(),
-			})
-			break
+			hasCriticalRisk = true
 		}
+
+		switch risk.RuleID {
+		case "openlist-token-validity-too-long":
+			hasLongTokenValidity = true
+		case "openlist-webdav-risky-access":
+			hasRiskyWebDAV = true
+		}
+	}
+
+	if hasCriticalRisk {
+		alerts = append(alerts, model.Alert{
+			SourceType: "scan",
+			SourceRef:  sourceRef,
+			AlertType:  "critical_risk_detected",
+			Severity:   "high",
+			Message:    "A scan detected at least one critical security risk.",
+			Status:     "open",
+			CreatedAt:  time.Now(),
+		})
 	}
 
 	if report.TotalScore < lowScoreThreshold {
@@ -121,6 +134,30 @@ func (s *ScanService) buildAlerts(report *model.ScanReport) []model.Alert {
 			AlertType:  "low_security_score",
 			Severity:   "medium",
 			Message:    fmt.Sprintf("A scan produced a security score below the configured threshold (%d).", lowScoreThreshold),
+			Status:     "open",
+			CreatedAt:  time.Now(),
+		})
+	}
+
+	if hasLongTokenValidity {
+		alerts = append(alerts, model.Alert{
+			SourceType: "scan",
+			SourceRef:  sourceRef,
+			AlertType:  "long_token_validity",
+			Severity:   "medium",
+			Message:    "The scan found token validity longer than the configured policy threshold.",
+			Status:     "open",
+			CreatedAt:  time.Now(),
+		})
+	}
+
+	if hasRiskyWebDAV {
+		alerts = append(alerts, model.Alert{
+			SourceType: "scan",
+			SourceRef:  sourceRef,
+			AlertType:  "risky_webdav_activity",
+			Severity:   "medium",
+			Message:    "The scan found risky WebDAV access configuration.",
 			Status:     "open",
 			CreatedAt:  time.Now(),
 		})

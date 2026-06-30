@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"openlist-secure-platform/internal/core/contracts"
@@ -83,10 +84,35 @@ func (s *EventService) buildAlerts(events []model.SecurityEvent, logPath string)
 			loginFailedCount++
 		}
 
+		sourceRef := strconv.FormatInt(event.ID, 10)
+		if isRiskyWebDAVEvent(event) {
+			alerts = append(alerts, model.Alert{
+				SourceType: "event",
+				SourceRef:  sourceRef,
+				AlertType:  "risky_webdav_activity",
+				Severity:   event.Severity,
+				Message:    "A risky WebDAV security event was imported.",
+				Status:     "open",
+				CreatedAt:  time.Now(),
+			})
+		}
+
+		if isSuspiciousAdminChange(event) {
+			alerts = append(alerts, model.Alert{
+				SourceType: "event",
+				SourceRef:  sourceRef,
+				AlertType:  "suspicious_admin_change",
+				Severity:   "high",
+				Message:    "A sensitive administrative change was imported and should be reviewed.",
+				Status:     "open",
+				CreatedAt:  time.Now(),
+			})
+		}
+
 		if event.Severity == "high" {
 			alerts = append(alerts, model.Alert{
 				SourceType: "event",
-				SourceRef:  strconv.FormatInt(event.ID, 10),
+				SourceRef:  sourceRef,
 				AlertType:  "high_severity_event",
 				Severity:   "high",
 				Message:    "A high severity security event was imported.",
@@ -111,6 +137,43 @@ func (s *EventService) buildAlerts(events []model.SecurityEvent, logPath string)
 	// TODO: add alert deduplication for repeated imports of the same log file.
 	// TODO: integrate notification delivery after the alerting module matures.
 	return alerts
+}
+
+func isRiskyWebDAVEvent(event model.SecurityEvent) bool {
+	if !strings.HasPrefix(event.EventType, "webdav_") {
+		return false
+	}
+
+	return event.Severity == "medium" || event.Severity == "high"
+}
+
+func isSuspiciousAdminChange(event model.SecurityEvent) bool {
+	if event.EventType != "admin_action" {
+		return false
+	}
+
+	combined := strings.ToLower(event.RawMessage + " " + event.Target)
+	keywords := []string{
+		"admin changed",
+		"admin action",
+		"changed setting",
+		"auth",
+		"permission",
+		"policy",
+		"security",
+		"sharing",
+		"storage",
+		"token",
+		"webdav",
+	}
+
+	for _, keyword := range keywords {
+		if strings.Contains(combined, keyword) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (s *EventService) loginFailedThreshold() int {

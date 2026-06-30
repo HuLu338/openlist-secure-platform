@@ -75,6 +75,22 @@ func detectEventType(line string) string {
 		return "login_success"
 	case strings.Contains(lowerLine, "login failed"):
 		return "login_failed"
+	case strings.Contains(lowerLine, "webdav") && (strings.Contains(lowerLine, "delete") || strings.Contains(lowerLine, "deleted")):
+		return "webdav_delete"
+	case strings.Contains(lowerLine, "webdav") && (strings.Contains(lowerLine, "manage") || strings.Contains(lowerLine, "permission") || strings.Contains(lowerLine, "admin")):
+		return "webdav_manage"
+	case strings.Contains(lowerLine, "webdav") && (strings.Contains(lowerLine, "write") || strings.Contains(lowerLine, "upload") || strings.Contains(lowerLine, " put ") || strings.Contains(lowerLine, "modified")):
+		return "webdav_write"
+	case strings.Contains(lowerLine, "webdav") && (strings.Contains(lowerLine, "access") || strings.Contains(lowerLine, "read") || strings.Contains(lowerLine, " get ") || strings.Contains(lowerLine, "download")):
+		return "webdav_access"
+	case strings.Contains(lowerLine, "token invalid") || strings.Contains(lowerLine, "invalid token"):
+		return "token_invalid"
+	case strings.Contains(lowerLine, "token issued") || strings.Contains(lowerLine, "issued token"):
+		return "token_issued"
+	case strings.Contains(lowerLine, "token refreshed") || strings.Contains(lowerLine, "token refresh"):
+		return "token_refreshed"
+	case strings.Contains(lowerLine, "token used") || strings.Contains(lowerLine, "used token"):
+		return "token_used"
 	case strings.Contains(lowerLine, "file accessed") || strings.Contains(lowerLine, "file access"):
 		return "file_access"
 	case strings.Contains(lowerLine, "file deleted") || strings.Contains(lowerLine, "file delete"):
@@ -88,10 +104,10 @@ func detectEventType(line string) string {
 
 func eventSeverity(eventType string) string {
 	switch eventType {
-	case "login_failed", "file_delete":
-		return "medium"
-	case "admin_action":
+	case "admin_action", "webdav_delete", "webdav_manage":
 		return "high"
+	case "login_failed", "file_delete", "webdav_write", "token_invalid":
+		return "medium"
 	default:
 		return "low"
 	}

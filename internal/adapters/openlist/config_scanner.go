@@ -160,8 +160,37 @@ func (s *OpenListConfigScanner) ruleEvidence(ruleID string, config map[string]an
 		if ok && value {
 			return "sftp_enabled=true", true
 		}
+	case "openlist-webdav-risky-access":
+		return webDAVRiskEvidence(config)
 	}
 
+	return "", false
+}
+
+func webDAVRiskEvidence(config map[string]any) (string, bool) {
+	if value, ok := getBool(config, "webdav.webdav_manage", "webdav.manage", "webdav_manage"); ok && value {
+		return "webdav_manage=true", true
+	}
+
+	if value, ok := getBool(config, "webdav.webdav_write", "webdav.write", "webdav_write"); ok && value {
+		return "webdav_write=true", true
+	}
+
+	if value, ok := getBool(config, "webdav.webdav_apply_to_sub_folder", "webdav.apply_to_sub_folder", "webdav_apply_to_sub_folder"); ok && value {
+		return "webdav_apply_to_sub_folder=true", true
+	}
+
+	enabled, ok := getBool(config, "webdav.enabled", "webdav.webdav_enabled", "webdav_enabled")
+	if !ok || !enabled {
+		return "", false
+	}
+
+	password, hasPassword := getString(config, "webdav.meta_password", "meta_password")
+	if !hasPassword || strings.TrimSpace(password) == "" {
+		return "webdav_enabled=true with empty meta_password", true
+	}
+
+	// TODO: map these representative keys to the exact OpenList WebDAV schema when finalized.
 	return "", false
 }
 
