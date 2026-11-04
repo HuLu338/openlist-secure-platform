@@ -2,6 +2,8 @@ package appconfig
 
 import "os"
 
+const DevelopmentAdminAPIKey = "change-me-dev-key"
+
 type AppConfig struct {
 	HTTPAddress        string
 	OpenListConfigPath string
@@ -20,10 +22,11 @@ func Default() AppConfig {
 		HTTPAddress:        ":8080",
 		OpenListConfigPath: "",
 		SQLiteDSN:          "./data/scan_history.db",
-		AdminAPIKey:        "change-me-dev-key",
-		AssistantMode:      assistantMode,
-		OpenAIAPIKey:       os.Getenv("OPENAI_API_KEY"),
-		OpenAIModel:        openAIModel,
+		// This fallback is for local development/testing only and should be changed in production.
+		AdminAPIKey:   envOrDefault("OPENLIST_SECURITY_API_KEY", DevelopmentAdminAPIKey),
+		AssistantMode: assistantMode,
+		OpenAIAPIKey:  os.Getenv("OPENAI_API_KEY"),
+		OpenAIModel:   openAIModel,
 	}
 }
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,7 +20,7 @@ from urllib.request import Request, urlopen
 
 
 BACKEND_BASE_URL = "http://localhost:8080"
-API_KEY = "change-me-dev-key"
+API_KEY = os.getenv("OPENLIST_SECURITY_API_KEY", "change-me-dev-key")
 ROOT_DIR = Path(__file__).resolve().parent
 CONFIG_DIR = ROOT_DIR / "configs"
 LOG_DIR = ROOT_DIR / "logs"
@@ -42,6 +43,7 @@ EVALUATION_RULES = {
     "openlist-ftp-enabled": {"enabled": True, "severity": "medium"},
     "openlist-sftp-enabled": {"enabled": True, "severity": "low"},
     "openlist-webdav-risky-access": {"enabled": True, "severity": "medium"},
+    "openlist-sign-all-disabled": {"enabled": True, "severity": "high"},
 }
 
 CONFIG_SCENARIOS = [
@@ -93,6 +95,14 @@ CONFIG_SCENARIOS = [
             "openlist-webdav-risky-access",
         ],
         "expected_alerts": 1,
+    },
+    {
+        "scenario_id": "config_signing_disabled",
+        "input_file": CONFIG_DIR / "config_signing_disabled.json",
+        "expected_findings": [
+            "openlist-sign-all-disabled",
+        ],
+        "expected_alerts": 0,
     },
 ]
 

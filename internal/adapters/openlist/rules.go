@@ -120,5 +120,16 @@ func DefaultSecurityRules() []model.SecurityRule {
 			Recommendation: "Review WebDAV permissions and disable risky WebDAV access if it is not required.",
 			UpdatedAt:      now,
 		},
+		{
+			RuleID:         "openlist-sign-all-disabled",
+			Platform:       "openlist",
+			Title:          "Direct Link Signing Disabled",
+			Severity:       "high",
+			Category:       "access_control",
+			Enabled:        true,
+			Description:    "Representative public exposure settings indicate direct link signing protection is disabled.",
+			Recommendation: "Enable Sign All or direct link signing protection for public-facing deployments.",
+			UpdatedAt:      now,
+		},
 	}
 }

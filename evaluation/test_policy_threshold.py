@@ -8,6 +8,7 @@ It uses only the Python standard library.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,7 +18,7 @@ from urllib.request import Request, urlopen
 
 
 BACKEND_BASE_URL = "http://localhost:8080"
-API_KEY = "change-me-dev-key"
+API_KEY = os.getenv("OPENLIST_SECURITY_API_KEY", "change-me-dev-key")
 ROOT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT_DIR / "configs" / "config_critical_weak_secret.json"
 RESULTS_PATH = ROOT_DIR / "results" / "policy_threshold_test_results.json"

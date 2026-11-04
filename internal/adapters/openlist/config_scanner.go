@@ -162,6 +162,8 @@ func (s *OpenListConfigScanner) ruleEvidence(ruleID string, config map[string]an
 		}
 	case "openlist-webdav-risky-access":
 		return webDAVRiskEvidence(config)
+	case "openlist-sign-all-disabled":
+		return signingRiskEvidence(config)
 	}
 
 	return "", false
@@ -191,6 +193,61 @@ func webDAVRiskEvidence(config map[string]any) (string, bool) {
 	}
 
 	// TODO: map these representative keys to the exact OpenList WebDAV schema when finalized.
+	return "", false
+}
+
+func signingRiskEvidence(config map[string]any) (string, bool) {
+	signingEvidence, signingDisabled := firstFalseEvidence(config, map[string]string{
+		"security.sign_all":            "sign_all=false",
+		"sign.sign_all":                "sign_all=false",
+		"sign_all":                     "sign_all=false",
+		"security.direct_link_signing": "direct_link_signing=false",
+		"direct_link_signing":          "direct_link_signing=false",
+		"signing.enabled":              "signing_enabled=false",
+		"security.signing_enabled":     "signing_enabled=false",
+	})
+	if !signingDisabled {
+		return "", false
+	}
+
+	exposureEvidence, exposed := firstTrueEvidence(config, map[string]string{
+		"deployment.public":      "public_access=true",
+		"deployment.exposed":     "deployment_exposed=true",
+		"server.public":          "public_access=true",
+		"server.exposed":         "server_exposed=true",
+		"site.public":            "public_access=true",
+		"site.exposed":           "site_exposed=true",
+		"security.public_access": "public_access=true",
+		"public":                 "public_access=true",
+		"exposed":                "deployment_exposed=true",
+	})
+	if !exposed {
+		return "", false
+	}
+
+	// TODO: map these representative keys to exact OpenList signing settings when finalized.
+	return signingEvidence + " with " + exposureEvidence, true
+}
+
+func firstFalseEvidence(config map[string]any, paths map[string]string) (string, bool) {
+	for path, evidence := range paths {
+		value, ok := getBool(config, path)
+		if ok && !value {
+			return evidence, true
+		}
+	}
+
+	return "", false
+}
+
+func firstTrueEvidence(config map[string]any, paths map[string]string) (string, bool) {
+	for path, evidence := range paths {
+		value, ok := getBool(config, path)
+		if ok && value {
+			return evidence, true
+		}
+	}
+
 	return "", false
 }
 

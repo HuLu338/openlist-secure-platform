@@ -340,6 +340,56 @@ func TestOpenListConfigScannerWebDAVRiskyAccess(t *testing.T) {
 	}
 }
 
+func TestOpenListConfigScannerSigningDisabledPublicExposure(t *testing.T) {
+	configPath := writeTempConfig(t, `{
+		"scheme": {
+			"https": true,
+			"skip_tls_verify": false
+		},
+		"deployment": {
+			"public": true
+		},
+		"security": {
+			"jwt_secret": "this-is-a-long-secret",
+			"token_expire_hours": 24,
+			"sign_all": false
+		},
+		"log": {
+			"enable": true
+		},
+		"services": {
+			"ftp_enable": false,
+			"sftp_enable": false
+		}
+	}`)
+
+	scanner := NewOpenListConfigScanner(
+		NewOpenListConfigReader(),
+		NewOpenListRuleProvider(),
+		testPolicyReader{policy: model.DefaultSecurityPolicy()},
+	)
+
+	report, err := scanner.ScanConfig(configPath)
+	if err != nil {
+		t.Fatalf("ScanConfig() returned error: %v", err)
+	}
+
+	if !hasRisk(report.Risks, "openlist-sign-all-disabled") {
+		t.Fatalf("expected signing disabled rule to trigger")
+	}
+	if !hasRiskEvidence(report.Risks, "openlist-sign-all-disabled", "sign_all=false with public_access=true") {
+		t.Fatalf("expected signing disabled evidence was not found")
+	}
+	if !hasRiskCategory(report.Risks, "openlist-sign-all-disabled", "access_control") {
+		t.Fatalf("expected signing disabled category was not found")
+	}
+
+	score := scoring.CalculateTotalScore(report.Risks)
+	if score != 80 {
+		t.Fatalf("score = %d, want 80", score)
+	}
+}
+
 func writeTempConfig(t *testing.T, content string) string {
 	t.Helper()
 

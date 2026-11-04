@@ -16,6 +16,7 @@ import type {
 } from '../types/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/backend-api'
+// Local development fallback only. Set VITE_ADMIN_API_KEY for packaged demos.
 const API_KEY = import.meta.env.VITE_ADMIN_API_KEY ?? 'change-me-dev-key'
 
 type QueryValue = string | number | boolean | undefined

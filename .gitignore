@@ -1,7 +1,11 @@
 # Go build files
+/server
 *.exe
 *.test
 *.out
+*.tsbuildinfo
+__pycache__/
+*.pyc
 
 # Data and database
 data/
